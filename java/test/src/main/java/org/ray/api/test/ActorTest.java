@@ -1,8 +1,6 @@
 package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
-import java.util.Collections;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
@@ -12,8 +10,8 @@ import org.ray.api.annotation.RayRemote;
 import org.ray.api.exception.UnreconstructableException;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.AbstractRayRuntime;
-import org.ray.runtime.actor.NativeRayActor;
-import org.ray.runtime.object.NativeRayObject;
+import org.ray.runtime.RayActorImpl;
+import org.ray.runtime.objectstore.NativeRayObject;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -74,12 +72,6 @@ public class ActorTest extends BaseTest {
     return res.get();
   }
 
-  @RayRemote
-  public static int testActorAsFieldOfParameter(List<RayActor<Counter>> actor, int delta) {
-    RayObject<Integer> res = Ray.call(Counter::increase, actor.get(0), delta);
-    return res.get();
-  }
-
   @Test
   public void testPassActorAsParameter() {
     RayActor<Counter> actor = Ray.createActor(Counter::new, 0);
@@ -87,17 +79,13 @@ public class ActorTest extends BaseTest {
         Ray.call(ActorTest::testActorAsFirstParameter, actor, 1).get());
     Assert.assertEquals(Integer.valueOf(11),
         Ray.call(ActorTest::testActorAsSecondParameter, 10, actor).get());
-    Assert.assertEquals(Integer.valueOf(111),
-        Ray.call(ActorTest::testActorAsFieldOfParameter, Collections.singletonList(actor), 100)
-            .get());
   }
 
   @Test
   public void testForkingActorHandle() {
-    TestUtils.skipTestUnderSingleProcess();
     RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
     Assert.assertEquals(Integer.valueOf(101), Ray.call(Counter::increase, counter, 1).get());
-    RayActor<Counter> counter2 = ((NativeRayActor) counter).fork();
+    RayActor<Counter> counter2 = ((RayActorImpl<Counter>) counter).fork();
     Assert.assertEquals(Integer.valueOf(103), Ray.call(Counter::increase, counter2, 2).get());
   }
 
@@ -112,8 +100,9 @@ public class ActorTest extends BaseTest {
     Ray.internal().free(ImmutableList.of(value.getId()), false, false);
     // Wait until the object is deleted, because the above free operation is async.
     while (true) {
-      NativeRayObject result = ((AbstractRayRuntime) Ray.internal()).getObjectStore()
-          .getRaw(ImmutableList.of(value.getId()), 0).get(0);
+      NativeRayObject result = ((AbstractRayRuntime)
+          Ray.internal()).getObjectStoreProxy().getObjectInterface()
+          .get(ImmutableList.of(value.getId()), 0).get(0);
       if (result == null) {
         break;
       }

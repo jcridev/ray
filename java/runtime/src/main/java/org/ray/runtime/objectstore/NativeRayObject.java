@@ -1,8 +1,5 @@
-package org.ray.runtime.object;
+package org.ray.runtime.objectstore;
 
-/**
- * Binary representation of ray object.
- */
 public class NativeRayObject {
 
   public byte[] data;

@@ -20,7 +20,6 @@ import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import org.apache.commons.lang3.tuple.Pair;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.util.FileUtil;
 import org.ray.runtime.util.ResourceUtil;
@@ -45,16 +44,17 @@ public class RunManager {
 
   private Random random;
 
-  private List<Pair<String, Process>> processes;
+  private List<Process> processes;
 
   private static final int KILL_PROCESS_WAIT_TIMEOUT_SECONDS = 1;
 
-  private static final Map<String, File> tempFiles = new HashMap<>();
+  private final Map<String, File> tempFiles;
 
   public RunManager(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
     processes = new ArrayList<>();
     random = new Random();
+    tempFiles = new HashMap<>();
   }
 
   public void cleanup() {
@@ -63,28 +63,19 @@ public class RunManager {
     // cannot exit gracefully.
 
     for (int i = processes.size() - 1; i >= 0; --i) {
-      Pair<String, Process> pair = processes.get(i);
-      String name = pair.getLeft();
-      Process p = pair.getRight();
+      Process p = processes.get(i);
+      p.destroy();
 
-      int numAttempts = 0;
-      while (p.isAlive()) {
-        if (numAttempts == 0) {
-          LOGGER.debug("Terminating process {}.", name);
-          p.destroy();
-        } else {
-          LOGGER.debug("Terminating process {} forcibly.", name);
-          p.destroyForcibly();
-        }
-        try {
-          p.waitFor(KILL_PROCESS_WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-          LOGGER.warn("Got InterruptedException while waiting for process {}" +
-              " to be terminated.", processes.get(i));
-        }
-        numAttempts++;
+      try {
+        p.waitFor(KILL_PROCESS_WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        LOGGER.warn("Got InterruptedException while waiting for process {}" +
+            " to be terminated.", processes.get(i));
       }
-      LOGGER.info("Process {} is now terminated.", name);
+
+      if (p.isAlive()) {
+        p.destroyForcibly();
+      }
     }
   }
 
@@ -161,7 +152,7 @@ public class RunManager {
     if (!p.isAlive()) {
       throw new RuntimeException("Failed to start " + name);
     }
-    processes.add(Pair.of(name, p));
+    processes.add(p);
     LOGGER.info("{} process started", name);
   }
 
@@ -268,7 +259,7 @@ public class RunManager {
         String.format("--store_socket_name=%s", rayConfig.objectStoreSocketName),
         String.format("--object_manager_port=%d", 0), // The object manager port.
         String.format("--node_manager_port=%d", 0),  // The node manager port.
-        String.format("--node_ip_address=%s", rayConfig.nodeIp),
+        String.format("--node_ip_address=%s",rayConfig.nodeIp),
         String.format("--redis_address=%s", rayConfig.getRedisIp()),
         String.format("--redis_port=%d", rayConfig.getRedisPort()),
         String.format("--num_initial_workers=%d", 0),  // number of initial workers

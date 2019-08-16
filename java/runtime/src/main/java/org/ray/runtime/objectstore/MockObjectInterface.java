@@ -1,4 +1,4 @@
-package org.ray.runtime.object;
+package org.ray.runtime.objectstore;
 
 import com.google.common.base.Preconditions;
 import java.util.ArrayList;
@@ -8,24 +8,22 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.ray.api.id.ObjectId;
-import org.ray.runtime.context.WorkerContext;
+import org.ray.runtime.WorkerContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Object store methods for local mode.
- */
-public class LocalModeObjectStore extends ObjectStore {
+public class MockObjectInterface implements ObjectInterface {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(LocalModeObjectStore.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(MockObjectInterface.class);
 
   private static final int GET_CHECK_INTERVAL_MS = 100;
 
   private final Map<ObjectId, NativeRayObject> pool = new ConcurrentHashMap<>();
   private final List<Consumer<ObjectId>> objectPutCallbacks = new ArrayList<>();
+  private final WorkerContext workerContext;
 
-  public LocalModeObjectStore(WorkerContext workerContext) {
-    super(workerContext);
+  public MockObjectInterface(WorkerContext workerContext) {
+    this.workerContext = workerContext;
   }
 
   public void addObjectPutCallback(Consumer<ObjectId> callback) {
@@ -37,14 +35,15 @@ public class LocalModeObjectStore extends ObjectStore {
   }
 
   @Override
-  public ObjectId putRaw(NativeRayObject obj) {
-    ObjectId objectId = ObjectId.fromRandom();
-    putRaw(obj, objectId);
+  public ObjectId put(NativeRayObject obj) {
+    ObjectId objectId = ObjectId.forPut(workerContext.getCurrentTaskId(),
+        workerContext.nextPutIndex());
+    put(obj, objectId);
     return objectId;
   }
 
   @Override
-  public void putRaw(NativeRayObject obj, ObjectId objectId) {
+  public void put(NativeRayObject obj, ObjectId objectId) {
     Preconditions.checkNotNull(obj);
     Preconditions.checkNotNull(objectId);
     pool.putIfAbsent(objectId, obj);
@@ -54,7 +53,7 @@ public class LocalModeObjectStore extends ObjectStore {
   }
 
   @Override
-  public List<NativeRayObject> getRaw(List<ObjectId> objectIds, long timeoutMs) {
+  public List<NativeRayObject> get(List<ObjectId> objectIds, long timeoutMs) {
     waitInternal(objectIds, objectIds.size(), timeoutMs);
     return objectIds.stream().map(pool::get).collect(Collectors.toList());
   }
